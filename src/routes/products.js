@@ -113,7 +113,7 @@ router.post('/backup', (req, res) => {
 
 // 10. GET health
 router.get('/health/check', (req, res) => {
-  res.status(200).json(response(200, 'OK2'));
+  res.status(200).json(response(200, 'OK'));
 });
 
 module.exports = router;
