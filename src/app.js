@@ -11,7 +11,7 @@ app.use(express.json());
 app.use('/api/products', productsRouter);
 
 app.get('/', (req, res) => {
-  res.json({ statusCode: 200, data: 'WebApp API funcionando 🚀' });
+  res.json({ statusCode: 200, data: 'WebApp API jalando' });
 });
 
 // Ruta que no existe -> 404 con el mismo formato JSON
