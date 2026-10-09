@@ -1,0 +1,90 @@
+name: CI/CD Pipeline
+
+# Se ejecuta en cada push o pull request hacia la rama main
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ---------------------------------------------------------------
+  # 1. CI: pruebas + cobertura (falla si la cobertura es menor a 70%)
+  # ---------------------------------------------------------------
+  test:
+    name: Pruebas y cobertura
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Instalar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Ejecutar pruebas y mostrar cobertura
+        run: npm run test:coverage
+
+  # ---------------------------------------------------------------
+  # 2. Build: construir la imagen y publicarla en Docker Hub
+  #    (solo en push a main, no en pull requests)
+  # ---------------------------------------------------------------
+  build-and-push:
+    name: Construir y publicar imagen en Docker Hub
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el código
+        uses: actions/checkout@v4
+
+      - name: Iniciar sesión en Docker Hub (con Personal Access Token)
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Configurar Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Construir y publicar (tags :latest y :hash-del-commit)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/webapp:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/webapp:${{ github.sha }}
+
+  # ---------------------------------------------------------------
+  # 3. CD: conectarse por SSH a la EC2 y desplegar la nueva versión
+  # ---------------------------------------------------------------
+  deploy:
+    name: Desplegar en AWS EC2
+    needs: build-and-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Desplegar por SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/webapp:latest
+            sudo docker rm -f webapp-container || true
+            sudo docker run -d \
+              --name webapp-container \
+              --restart unless-stopped \
+              -p 80:3000 \
+              -v webapp-data:/data \
+              ${{ secrets.DOCKERHUB_USERNAME }}/webapp:latest
+            sudo docker image prune -f
+            sudo docker ps --filter name=webapp-container

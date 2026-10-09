@@ -1,0 +1,12 @@
+node_modules
+.env
+.env.*
+*.pem
+*.key
+*.log
+logs
+coverage
+backups
+*.db
+.DS_Store
+.vscode
